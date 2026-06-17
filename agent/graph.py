@@ -23,6 +23,7 @@ from typing import Any
 
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
+from pydantic import BaseModel, Field
 
 from agent import prompts
 from agent.execution import ExecutionResult, execute_sql
@@ -39,6 +40,12 @@ VLLM_MODEL = os.environ.get("VLLM_MODEL", "Qwen/Qwen3-30B-A3B-Instruct-2507")
 LLM_API_KEY = os.environ.get("OPENAI_API_KEY", "not-needed")
 
 
+class VerificationResult(BaseModel):
+    """Pydantic model for LLM verification response."""
+    valid: bool = Field(description="Whether the SQL query and results are valid and answer the question")
+    issue: str = Field(default="", description="Description of the issue if valid is False, empty otherwise")
+
+
 @dataclass
 class AgentState:
     """State threaded through the graph. Extend with fields you need."""
@@ -53,16 +60,16 @@ class AgentState:
     iteration: int = 0
     history: list[dict[str, Any]] = field(default_factory=list)
 
-
-def llm() -> ChatOpenAI:
-    """Chat client pointed at VLLM_BASE_URL (your local vLLM by default)."""
-    return ChatOpenAI(
+#"""Chat client pointed at VLLM_BASE_URL (your local vLLM by default)."""
+# we use the singleton pattern to avoid creating a new client for each call
+_LLM = ChatOpenAI(
         model=VLLM_MODEL,
         base_url=VLLM_BASE_URL,
         api_key=LLM_API_KEY,
         temperature=0.0,
     )
-
+def llm() -> ChatOpenAI:
+    return _LLM
 
 # ---- Nodes ------------------------------------------------------------
 
@@ -101,7 +108,7 @@ def generate_sql_node(state: AgentState) -> dict:
     sql = _extract_sql(response.content)
     return {
         "sql": sql,
-        "iteration": state.iteration + 1,
+        "iteration": state.iteration,       # we don't want to increment the iteration here, only on revise node to allow for the full MAX_ITERATIONS check
         "history": state.history + [{"node": "generate_sql", "sql": sql}],
     }
 
@@ -124,7 +131,26 @@ def verify_node(state: AgentState) -> dict:
     What counts as "not plausible" is yours to define - see the Phase 3 targets
     in the README.
     """
-    raise NotImplementedError("Implement in Phase 3")
+    structured_llm = llm().with_structured_output(VerificationResult)
+    verification = structured_llm.invoke([
+        ("system", prompts.VERIFY_SYSTEM),
+        ("user", prompts.VERIFY_USER.format(
+            schema=state.schema,
+            question=state.question,
+            sql_query=state.sql,
+            execution_result=state.execution.render() if state.execution else "No execution result",
+        )),
+    ])
+    if state.execution and state.execution.error:
+        return{
+            "verify_ok" : False,
+            "verify_issue" : state.execution.error
+        }
+    return {
+        "verify_ok": verification.valid,
+        "verify_issue": verification.issue,
+        "history": state.history + [{"node": "verify", "valid": verification.valid, "issue": verification.issue}],
+    }
 
 
 def revise_node(state: AgentState) -> dict:
@@ -137,7 +163,24 @@ def revise_node(state: AgentState) -> dict:
 
     Return: {"sql": <str>, "iteration": state.iteration + 1, ...}.
     """
-    raise NotImplementedError("Implement in Phase 3")
+    execution_result = state.execution.render()
+    response = llm().invoke([
+        ("system", prompts.REVISE_SYSTEM),
+        ("user", prompts.REVISE_USER.format(
+            schema=state.schema,
+            question=state.question,
+            invalid_sql_query=state.sql,
+            verification_issue=state.verify_issue,
+            execution_result=execution_result,
+        )),
+    ])
+    sql = _extract_sql(response.content)
+    return {
+        "sql": sql,
+        "iteration": state.iteration + 1,
+        "history": state.history + [{"node": "revise", "sql": sql}],
+    }
+
 
 
 def route_after_verify(state: AgentState) -> str:
@@ -146,8 +189,13 @@ def route_after_verify(state: AgentState) -> str:
     Two reasons to end: the verifier was happy (state.verify_ok), or you've hit
     the iteration cap (state.iteration >= MAX_ITERATIONS). Otherwise, revise.
     """
-    raise NotImplementedError("Implement in Phase 3")
+    if state.verify_ok:
+        return "end"
 
+    if state.iteration >= MAX_ITERATIONS:
+        return "end"
+
+    return "revise"
 
 # ---- Graph wiring -----------------------------------------------------
 
