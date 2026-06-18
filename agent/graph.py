@@ -71,6 +71,15 @@ _LLM = ChatOpenAI(
 def llm() -> ChatOpenAI:
     return _LLM
 
+def _referenced_tables(sql: str) -> set[str]:
+    """Best-effort extraction of table names referenced via FROM/JOIN."""
+    return {m.group(1).strip('"') for m in re.finditer(r'\b(?:FROM|JOIN)\s+"?(\w+)"?', sql, re.IGNORECASE)}
+
+
+def _known_tables(schema: str) -> set[str]:
+    """Table names declared in the rendered schema text."""
+    return {m.group(1) for m in re.finditer(r'CREATE TABLE\s+"([^"]+)"', schema)}
+
 # ---- Nodes ------------------------------------------------------------
 
 def _attach_schema(state: AgentState) -> dict:
@@ -131,6 +140,26 @@ def verify_node(state: AgentState) -> dict:
     What counts as "not plausible" is yours to define - see the Phase 3 targets
     in the README.
     """
+
+    # 1. Deterministic check: did the SQL even execute?
+    if state.execution and state.execution.error:
+        return {
+            "verify_ok": False,
+            "verify_issue": state.execution.error,
+            "history": state.history + [{"node": "verify", "valid": False, "issue": state.execution.error}],
+        }
+
+    # 2. Deterministic check: does it only reference real tables?
+    unknown = _referenced_tables(state.sql) - _known_tables(state.schema)
+    if unknown:
+        issue = f"Query references unknown table(s): {', '.join(sorted(unknown))}"
+        return {
+            "verify_ok": False,
+            "verify_issue": issue,
+            "history": state.history + [{"node": "verify", "valid": False, "issue": issue}],
+        }
+
+    # 3. LLM judgment: does the result plausibly answer the question?
     structured_llm = llm().with_structured_output(VerificationResult)
     verification = structured_llm.invoke([
         ("system", prompts.VERIFY_SYSTEM),
@@ -139,13 +168,9 @@ def verify_node(state: AgentState) -> dict:
             question=state.question,
             sql_query=state.sql,
             execution_result=state.execution.render() if state.execution else "No execution result",
+            iteration=state.iteration,
         )),
     ])
-    if state.execution and state.execution.error:
-        return{
-            "verify_ok" : False,
-            "verify_issue" : state.execution.error
-        }
     return {
         "verify_ok": verification.valid,
         "verify_issue": verification.issue,

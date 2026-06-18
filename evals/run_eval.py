@@ -58,8 +58,97 @@ def matches(gold_rows: list[tuple] | None, pred_rows: list[tuple] | None) -> boo
 
 def eval_one(question: dict, agent_url: str) -> dict:
     """Score one question. Return a dict capturing per-iteration correctness."""
-    raise NotImplementedError("Phase 5")
+    db_id = question["db_id"]
+    gold_sql = question["gold_sql"]
+    question_text = question["question"]
 
+    # Run gold SQL to get expected rows
+    gold_ok, gold_rows, gold_error = run_sql(db_id, gold_sql)
+    if not gold_ok:
+        return {
+            "question": question_text,
+            "db_id": db_id,
+            "gold_sql": gold_sql,
+            "gold_ok": False,
+            "gold_error": gold_error,
+            "per_iteration": [],
+            "final_ok": False,
+            "final_error": "gold SQL failed",
+        }
+
+    gold_canonical = canonicalize(gold_rows)
+
+    # Call agent over HTTP
+    try:
+        response = httpx.post(
+            agent_url,
+            json={"question": question_text, "db": db_id},
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        agent_result = response.json()
+    except Exception as e:  # noqa: BLE001
+        return {
+            "question": question_text,
+            "db_id": db_id,
+            "gold_sql": gold_sql,
+            "gold_ok": True,
+            "per_iteration": [],
+            "final_ok": False,
+            "final_error": f"agent request failed: {type(e).__name__}: {e}",
+        }
+
+    # Extract agent's final SQL and execution
+    agent_sql = agent_result.get("sql", "")
+    agent_ok = agent_result.get("ok", False)
+    agent_error = agent_result.get("error")
+    agent_rows = agent_result.get("rows")
+    agent_iterations = agent_result.get("iterations", 0)
+    history = agent_result.get("history", [])
+
+    if not agent_ok:
+        return {
+            "question": question_text,
+            "db_id": db_id,
+            "gold_sql": gold_sql,
+            "agent_sql": agent_sql,
+            "gold_ok": True,
+            "per_iteration": [],
+            "final_ok": False,
+            "final_error": agent_error or "agent execution failed",
+            "revisions": agent_iterations,
+        }
+
+    # Compare canonicalized results
+    agent_canonical = canonicalize(agent_rows)
+    correct = matches(gold_canonical, agent_canonical)
+
+    # Build per-iteration correctness by re-executing each SQL attempt from history.
+    # Each "generate_sql" or "revise" node represents one SQL attempt (iteration).
+    per_iteration: list[bool] = []
+    for entry in history:
+        if entry.get("node") in ("generate_sql", "revise"):
+            sql = entry.get("sql", "")
+            if sql:
+                ok, rows, _ = run_sql(db_id, sql)
+                per_iteration.append(ok and matches(gold_canonical, canonicalize(rows)))
+            else:
+                per_iteration.append(False)
+
+    # Safety fallback: if history had no SQL-generating nodes, derive from final answer
+    if not per_iteration:
+        per_iteration = [correct]
+
+    return {
+        "question": question_text,
+        "db_id": db_id,
+        "gold_sql": gold_sql,
+        "agent_sql": agent_sql,
+        "gold_ok": True,
+        "per_iteration": per_iteration,
+        "final_ok": correct,
+        "revisions": agent_iterations,
+    }
 
 def summarize(results: list[dict]) -> dict:
     """Aggregate per-question results.
@@ -70,8 +159,53 @@ def summarize(results: list[dict]) -> dict:
     The agent stopped emitting; whatever it had at termination is what
     would have been served had we polled at iteration k.
     """
-    raise NotImplementedError("Phase 5")
+    if not results:
+        return {
+            "total_questions": 0,
+            "final_pass_rate": 0.0,
+            "per_iteration_pass_rates": {},
+        }
+    total_questions = len(results)
+    final_correct = sum(1 for r in results if r.get("final_ok", False))
+    final_pass_rate = final_correct / total_questions
 
+    # Find the maximum number of SQL attempts across all questions
+    max_iterations = max(
+        (len(r.get("per_iteration", [])) for r in results),
+        default=0,
+    )
+
+    per_iteration_pass_rates: dict[int, float] = {}
+    for i in range(max_iterations):
+        correct_at_i = 0
+        for r in results:
+            per_iter = r.get("per_iteration", [])
+            if i < len(per_iter):
+                if per_iter[i]:
+                    correct_at_i += 1
+            elif per_iter:
+                # Carry-forward: agent stopped before iteration i, use its last result
+                if per_iter[-1]:
+                    correct_at_i += 1
+            # else: agent failed completely → counts as wrong at all iterations
+
+        per_iteration_pass_rates[i] = correct_at_i / total_questions
+
+    # Tally revision distribution
+    revision_counts: dict[int, int] = {}
+    for r in results:
+        n = r.get("revisions")
+        if n is None:
+            per_iter = r.get("per_iteration", [])
+            n = len(per_iter) - 1 if per_iter else 0
+        revision_counts[n] = revision_counts.get(n, 0) + 1
+
+    return {
+        "total_questions": total_questions,
+        "final_pass_rate": final_pass_rate,
+        "per_iteration_pass_rates": per_iteration_pass_rates,
+        "revision_counts": revision_counts,
+    }
 
 # ---------- Main (provided) --------------------------------------------
 

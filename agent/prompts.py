@@ -10,6 +10,8 @@ Filling these in is part of Phase 3.
 
 GENERATE_SQL_SYSTEM = """
 You are an expert SQL generator. Your task is to generate valid SQL queries based on the provided schema and user question.
+You are writing SQLite SQL. Use strftime('%Y', col) not EXTRACT(), use || for string concat not CONCAT(), no ILIKE (use LIKE), no LIMIT with OFFSET syntax differences.
+
 Rules:
 - Use only tables and columns from the schema.
 - Never invent column names.
@@ -27,22 +29,31 @@ Question:
 {question}
 """
 
-
 VERIFY_SYSTEM = """
-You are an expert SQL verifier. Your task is to verify if the provided SQL query is correct and answers the user's question.
-You must check:
-- Does the query use only tables and columns from the schema?
-- Does the query answer the user's question?
-- Is the query syntactically correct?
-- Does the query return the expected results?
-Return a JSON object with the keys 'valid' and 'issue'. Valid should be true if the query is valid, or 'false' if it is not.
-The 'issue' field should contain a string with the issue if the query is invalid.
-If the query is valid, return true in the 'valid' field.
-If the query is invalid, explain why in the 'issue' field and return false in the 'valid' field..
-Return the JSON object only, no additional text or explanation.
+You are reviewing a SQL query that was generated to answer a natural-language
+question against a known database schema. The query has already executed
+successfully - your job is to judge whether its result plausibly and
+correctly answers the question, not whether it runs.
+
+Flag the result as invalid if you notice any of:
+- Zero rows returned when the question clearly expects a value or a list
+  (e.g. an average, a count, a name) - this is usually a wrong filter value,
+  a bad join, or a case-sensitivity mismatch, not a genuine "no data" case.
+- The result's shape doesn't match the question's shape (e.g. the question
+  asks "how many X" but the query returns full rows instead of a count;
+  the question asks for a list of names but the query returns a single
+  aggregate).
+- The query selects or joins on columns that don't plausibly correspond to
+  what the question is asking about, given the schema.
+- A filter, sort direction, or limit is inverted relative to the question's
+  intent (e.g. "highest" vs "lowest", "first" vs "last").
+
+If none of these apply and the result looks like a reasonable, direct answer
+to the question, mark it valid. Be specific and concrete in the issue field -
+name the exact problem so it can be fixed, don't just say "looks wrong."
 """
 
-# Available placeholders: {schema}, {question}, {sql_query}
+# Available placeholders: {schema}, {question}, {sql_query}, {execution_result}, {iteration
 VERIFY_USER = """
 Schema:
 {schema}
@@ -56,30 +67,30 @@ SQL Query:
 Execution Result:
 {execution_result}
 
-Determine whether:
-1. The SQL is valid.
-2. The execution succeeded.
-3. The returned data answers the question.
-
-Return:
-{
-  "valid": true|false,
-  "issue": "..."
-}"""
-
+Judge whether the execution result correctly and plausibly answers the
+question, given the schema and query above.
+Note: this query has already been revised {iteration} time(s). 
+If the query is structurally sound and the zero-row result could plausibly reflect the actual data, 
+prefer marking it valid rather than triggering another revision.
+"""
 
 REVISE_SYSTEM = """
-You are an expert SQL reviser. Your task is to revise the provided SQL query to make it valid and answer the user's question.
-Analyze:
-- User question
-- Previous SQL
-- Execution result
-- Verification issue
+You are fixing a SQL query that failed verification. You will be shown the
+original question, the schema, the query that was tried, what happened when
+it ran, and the specific problem identified with it.
 
-Produce a corrected SQL query.
+Make the smallest change that fixes the identified problem. The rest of the
+query was not flagged as wrong - do not rewrite parts that aren't implicated
+by the stated issue, and do not introduce a different approach to the query
+unless the issue specifically requires it.
 
-Do not repeat the same mistake.
-Return SQL only, no additional text or explanation.
+Use the execution result and verification issue precisely: if it names a
+table, column, or value, that is exactly what needs to change. Re-check your
+revision against the schema before finalizing it.
+
+You are writing SQLite SQL. Use strftime('%Y', col) not EXTRACT(), 
+use || for string concat not CONCAT(), no ILIKE (use LIKE), no LIMIT with OFFSET syntax differences.
+Return SQLite SQL only, no additional text, no markdown fences, no explanation.
 """
 
 # Available placeholders: {schema}, {question}, {invalid_sql_query}
@@ -90,7 +101,7 @@ Schema:
 Question:
 {question}
 
-SQL Query:
+Previous SQL Query:
 {invalid_sql_query}
 
 Execution Result:
@@ -99,5 +110,7 @@ Execution Result:
 Verification Issue:
 {verification_issue}
 
-Based on the provided schema, the user question and the generated invalid SQL query revise the SQL query to make it valid.
+Fix the previous SQL query to resolve the verification issue above, making
+the minimal change needed. The query must use only tables and columns from
+the schema.
 """
