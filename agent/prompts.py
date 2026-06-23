@@ -110,6 +110,10 @@ Execution Result:
 Verification Issue:
 {verification_issue}
 
+Sample data from the referenced tables (use this to check exact casing,
+formatting, and value conventions — do not guess string literals):
+{row_samples}
+
 Fix the previous SQL query to resolve the verification issue above, making
 the minimal change needed. The query must use only tables and columns from
 the schema.

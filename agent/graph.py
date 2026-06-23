@@ -59,6 +59,7 @@ class AgentState:
     verify_issue: str = ""
     iteration: int = 0
     history: list[dict[str, Any]] = field(default_factory=list)
+    row_samples: str = ""
 
 #"""Chat client pointed at VLLM_BASE_URL (your local vLLM by default)."""
 # we use the singleton pattern to avoid creating a new client for each call
@@ -96,6 +97,18 @@ def _extract_sql(text: str) -> str:
     fenced = re.search(r"```(?:sql)?\s*(.*?)```", text, re.DOTALL | re.IGNORECASE)
     return (fenced.group(1) if fenced else text).strip()
 
+def sample_rows_node(state: AgentState) -> dict:
+    tables = _referenced_tables(state.sql) & _known_tables(state.schema)
+    chunks = []
+    for t in sorted(tables):
+        result = execute_sql(state.db_id, f'SELECT * FROM "{t}" LIMIT 3')
+        if result.ok:
+            chunks.append(f"-- Sample rows from {t}:\n{result.render(max_rows=3)}")
+    text = "\n\n".join(chunks) if chunks else "No sample rows available."
+    return {
+        "row_samples": text,
+        "history": state.history + [{"node": "sample_rows", "tables": sorted(tables)}],
+    }
 
 def generate_sql_node(state: AgentState) -> dict:
     """Worked example - the other LLM nodes follow this same shape.
@@ -197,6 +210,7 @@ def revise_node(state: AgentState) -> dict:
             invalid_sql_query=state.sql,
             verification_issue=state.verify_issue,
             execution_result=execution_result,
+            row_samples=state.row_samples,
         )),
     ])
     sql = _extract_sql(response.content)
@@ -230,6 +244,7 @@ def build_graph():
     g.add_node("generate_sql", generate_sql_node)
     g.add_node("execute", execute_node)
     g.add_node("verify", verify_node)
+    g.add_node("sample_rows", sample_rows_node)
     g.add_node("revise", revise_node)
 
     g.add_edge(START, "attach_schema")
@@ -239,8 +254,9 @@ def build_graph():
     g.add_conditional_edges(
         "verify",
         route_after_verify,
-        {"revise": "revise", "end": END},
+        {"revise": "sample_rows", "end": END},   # route to sample_rows, not revise
     )
+    g.add_edge("sample_rows", "revise")
     g.add_edge("revise", "execute")
     return g.compile()
 
