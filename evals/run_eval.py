@@ -19,9 +19,24 @@ import time
 from pathlib import Path
 
 import httpx
-
+# Notes on BIRD eval corrections:
+# - Several gold SQL queries in the original BIRD-based eval set were logically misaligned
+#   with their natural-language questions, including issues with date logic, inclusive
+#   ranges, fragile string parsing of times, and reliance on hard-coded ID values.
+# - Concretely, we corrected:
+#   * The crimes-in-1995 query to filter regions with A15 > 4000 and require at least one
+#     account opened in or after 1997 via an EXISTS subquery (no over-counting regions).
+#   * The disqualified-finishers query to use an inclusive race range (BETWEEN 50 AND 100)
+#     instead of excluding races 50 and 100.
+#   * The uric-acid query to compute per-patient latest lab results with a correlated
+#     MAX(Date) subquery and to apply the normal-range thresholds correctly to both sexes.
+#   * The fastest-lap query to order lap times by a straightforward conversion from
+#     m:ss.xxx to seconds, avoiding brittle nested INSTR/SUBSTR logic.
+# - All other question/SQL pairs were preserved as-is, and the corrected eval set keeps
+#   the same JSONL structure (one object per line with question, db_id, gold_sql) so it
+#   can be used as a drop-in replacement for the original evaluation file.
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_EVAL_FILE = ROOT / "evals" / "eval_set.jsonl"
+DEFAULT_EVAL_FILE = ROOT / "evals" / "eval_set_corrected.jsonl"
 DEFAULT_OUT_FILE = ROOT / "results" / "eval_baseline.json"
 DB_DIR = ROOT / "data" / "bird"
 AGENT_URL_DEFAULT = "http://localhost:8001/answer"
