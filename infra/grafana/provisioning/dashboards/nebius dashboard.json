@@ -38,7 +38,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "cfpijjnoxf9q8d"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -120,7 +120,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "cfpijjnoxf9q8d"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.50, sum(rate(vllm:e2e_request_latency_seconds_bucket[5m])) by (le))",
@@ -133,7 +133,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "cfpijjnoxf9q8d"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum(rate(vllm:e2e_request_latency_seconds_bucket[5m])) by (le))",
@@ -144,7 +144,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "cfpijjnoxf9q8d"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum(rate(vllm:e2e_request_latency_seconds_bucket[5m])) by (le))",
@@ -161,7 +161,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "cfpijjnoxf9q8d"
+        "uid": "prometheus"
       },
       "description": "How long until we get the first token?",
       "fieldConfig": {
@@ -254,7 +254,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "cfpijjnoxf9q8d"
+        "uid": "prometheus"
       },
       "description": " vllm:e2e_request_latency_seconds is the outcome, but vllm:request_queue_time_seconds, vllm:request_prefill_time_seconds, and vllm:request_decode_time_seconds are the causes. If P95 e2e latency blows up, you want to look at these three side by side to see which phase is growing — that answers \"is it slow, and where?\" directly:\n\nQueue time growing → you're saturated, requests are waiting for a slot (scheduler-bound)\nPrefill time growing → long input prompts are expensive to process (compute-bound on input)\nDecode time growing → generation itself is slow, or you've got too many concurrent decodes competing for GPU (compute-bound on output, or KV-cache-bound)",
       "fieldConfig": {
@@ -337,7 +337,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "cfpijjnoxf9q8d"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum(rate(vllm:request_queue_time_seconds_bucket[5m])) by (le))",
@@ -348,7 +348,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "cfpijjnoxf9q8d"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum(rate(vllm:request_prefill_time_seconds_bucket[5m])) by (le))",
@@ -361,7 +361,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "cfpijjnoxf9q8d"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum(rate(vllm:request_decode_time_seconds_bucket[5m])) by (le))",
@@ -391,7 +391,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "cfpijjnoxf9q8d"
+        "uid": "prometheus"
       },
       "description": "This is the direct line to the Maximum concurrency: 33.70x number from startup — as usage approaches 100%, we are approaching that ceiling.",
       "fieldConfig": {
@@ -484,7 +484,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "cfpijjnoxf9q8d"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -572,7 +572,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "cfpijjnoxf9q8d"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "rate(vllm:prefix_cache_queries_total[5m])",
@@ -602,7 +602,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "cfpijjnoxf9q8d"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -690,7 +690,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "cfpijjnoxf9q8d"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "rate(vllm:prompt_tokens_total[5m])",
@@ -703,7 +703,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "cfpijjnoxf9q8d"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "sum(rate(vllm:request_success_total[5m]))",
@@ -720,7 +720,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "cfpijjnoxf9q8d"
+        "uid": "prometheus"
       },
       "description": "This pair is probably the single most important \"am I saturated\" signal — if waiting climbs while running plateaus, you've hit your concurrency ceiling and the scheduler is queuing.",
       "fieldConfig": {
@@ -809,7 +809,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "cfpijjnoxf9q8d"
+            "uid": "prometheus"
           },
           "editorMode": "code",
           "expr": "vllm:num_requests_waiting",
@@ -826,7 +826,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "cfpijjnoxf9q8d"
+        "uid": "prometheus"
       },
       "description": "Preemptions mean vLLM had to evict a running request's KV cache to make room for another, which is a strong, specific signal of cache pressure causing real rework (not just queueing).",
       "fieldConfig": {
