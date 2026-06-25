@@ -31,7 +31,7 @@ from agent.schema import render_schema
 
 # Total generate + revise calls before the loop is forced to stop.
 # 3-5 is a reasonable range; tune it as part of Phase 3.
-MAX_ITERATIONS = 3
+MAX_ITERATIONS = 2
 
 VLLM_BASE_URL = os.environ.get("VLLM_BASE_URL", "http://localhost:8000/v1")
 VLLM_MODEL = os.environ.get("VLLM_MODEL", "Qwen/Qwen3-30B-A3B-Instruct-2507")
@@ -68,7 +68,9 @@ _LLM = ChatOpenAI(
         base_url=VLLM_BASE_URL,
         api_key=LLM_API_KEY,
         temperature=0.0,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
+
 def llm() -> ChatOpenAI:
     return _LLM
 
@@ -101,9 +103,10 @@ def sample_rows_node(state: AgentState) -> dict:
     tables = _referenced_tables(state.sql) & _known_tables(state.schema)
     chunks = []
     for t in sorted(tables):
-        result = execute_sql(state.db_id, f'SELECT * FROM "{t}" LIMIT 3')
+        # Sample only 2 rows, all columns, but truncate aggressively
+        result = execute_sql(state.db_id, f'SELECT * FROM "{t}" LIMIT 2')
         if result.ok:
-            chunks.append(f"-- Sample rows from {t}:\n{result.render(max_rows=3)}")
+            chunks.append(f"-- Sample from {t}:\n{result.render(max_rows=2)}")
     text = "\n\n".join(chunks) if chunks else "No sample rows available."
     return {
         "row_samples": text,

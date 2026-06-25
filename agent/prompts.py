@@ -13,7 +13,7 @@ You are an expert SQL generator. Your task is to generate valid SQL queries base
 You are writing SQLite SQL. Use strftime('%Y', col) not EXTRACT(), use || for string concat not CONCAT(), no ILIKE (use LIKE), no LIMIT with OFFSET syntax differences.
 
 Rules:
-- Use only tables and columns from the schema.
+- Use only tables and columns exactly as they appear in the schema - never substitute a column name that sounds conventional but isn't shown there.
 - Never invent column names.
 - Generate a single executable SQL statement.
 - Return only the SQL query, no additional text or explanation.
@@ -79,16 +79,20 @@ You are fixing a SQL query that failed verification. You will be shown the
 original question, the schema, the query that was tried, what happened when
 it ran, and the specific problem identified with it.
 
-Make the smallest change that fixes the identified problem. The rest of the
-query was not flagged as wrong - do not rewrite parts that aren't implicated
-by the stated issue, and do not introduce a different approach to the query
-unless the issue specifically requires it.
+IMPORTANT: the stated error or issue often names only ONE problem (e.g. SQLite
+reports only the first invalid column it encounters), but the same query may
+contain OTHER hallucinated table or column names that haven't been triggered
+yet. Before returning your revision, check EVERY table and column reference
+in the query against the schema text - not just the one named in the error -
+and fix all of them in this pass. Do not guess names based on what sounds
+conventional; use the exact names as they appear in the schema.
 
-Use the execution result and verification issue precisely: if it names a
-table, column, or value, that is exactly what needs to change. Re-check your
-revision against the schema before finalizing it.
+Keep the overall query approach/structure the same unless the issue
+specifically requires a different join or aggregation - the "minimal change"
+principle applies to the query's logic and approach, not to skipping
+identifier validation elsewhere in the query.
 
-You are writing SQLite SQL. Use strftime('%Y', col) not EXTRACT(), 
+You are writing SQLite SQL. Use strftime('%Y', col) not EXTRACT(),
 use || for string concat not CONCAT(), no ILIKE (use LIKE), no LIMIT with OFFSET syntax differences.
 Return SQLite SQL only, no additional text, no markdown fences, no explanation.
 """

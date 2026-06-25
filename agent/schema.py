@@ -19,8 +19,10 @@ def db_path(db_id: str) -> Path:
     return DB_DIR / f"{db_id}.sqlite"
 
 
-def _q(ident: str) -> str:
+def _q(ident: str | None) -> str:
     """Double-quote a SQL identifier, escaping any embedded quotes."""
+    if ident is None:
+        return ""  # SQLite FK with no named target column - references target's PK
     return '"' + ident.replace('"', '""') + '"'
 
 
@@ -47,15 +49,16 @@ def render_schema(db_id: str) -> str:
                 line = f"  {_q(name)} {ctype}"
                 if pk:
                     line += " PRIMARY KEY"
-                if notnull and not pk:
-                    line += " NOT NULL"
+                # dropped: NOT NULL annotation - lower value per token than FK info
                 col_lines.append(line)
+            # The euorpean_football_2 schema was absolutely huge blowing past our context limits. Eliminating forein keys from the render will thin it a lot.
+            # ... and now it's back on because without it accuracy dropped
             for fk in conn.execute(f"PRAGMA foreign_key_list({_q(t)})"):
-                # (id, seq, ref_table, from, to, on_update, on_delete, match)
+                ref_col = f"({_q(fk[4])})" if fk[4] is not None else ""
                 col_lines.append(
-                    f"  FOREIGN KEY ({_q(fk[3])}) REFERENCES {_q(fk[2])}({_q(fk[4])})"
+                    f"  FOREIGN KEY ({_q(fk[3])}) REFERENCES {_q(fk[2])}{ref_col}"
                 )
-            parts.append(",\n".join(col_lines))
+                parts.append(",\n".join(col_lines))
             parts.append(");")
     return "\n".join(parts)
 

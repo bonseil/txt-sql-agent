@@ -13,7 +13,7 @@ from pathlib import Path
 import aiohttp
 
 ROOT = Path(__file__).resolve().parent
-PERF_POOL = ROOT / "load_test" / "perf_pool.jsonl"
+PERF_POOL = ROOT / "perf_pool.jsonl"
 AGENT_URL_DEFAULT = "http://localhost:8001/answer"
 
 

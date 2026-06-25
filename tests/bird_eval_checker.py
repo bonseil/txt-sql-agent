@@ -2,7 +2,7 @@ import json
 import sqlite3
 import os
 
-EVAL_PATH = 'eval_set.jsonl'  # adjust if needed
+EVAL_PATH = '../evals/eval_set.jsonl'  # adjust if needed
 DB_ROOT = 'databases'        # base directory containing BIRD .db files
 
 

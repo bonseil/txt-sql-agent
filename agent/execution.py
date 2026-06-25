@@ -11,10 +11,15 @@ from dataclasses import dataclass
 
 from agent.schema import db_path
 
+MAX_FIELD_LENGTH = 100
+
+def _trunc(c):
+    s = str(c) if c is not None else ""
+    return s if len(s) <= MAX_FIELD_LENGTH else s[:MAX_FIELD_LENGTH] + "…"
+
 
 @dataclass
 class ExecutionResult:
-    MAX_FIELD_LENGTH = 100
     ok: bool
     rows: list[tuple] | None = None
     columns: list[str] | None = None
@@ -28,8 +33,9 @@ class ExecutionResult:
         if self.row_count == 0:
             return "OK: 0 rows returned."
         cols = ", ".join(self.columns or [])
+
         preview = "\n".join(
-            " | ".join(str(c) for c in row) for row in (self.rows or [])[:max_rows] if len(row) < MAX_FIELD_LENGTH
+            " | ".join(_trunc(c) for c in row) for row in (self.rows or [])[:max_rows]
         )
         more = f"\n... ({self.row_count - max_rows} more rows)" if self.row_count > max_rows else ""
         return f"OK: {self.row_count} rows.\nCOLUMNS: {cols}\nFIRST ROWS:\n{preview}{more}"
