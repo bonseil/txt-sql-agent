@@ -17,5 +17,5 @@ exec uv run python -m vllm.entrypoints.openai.api_server \
     --host 0.0.0.0 \
     --port 8000 \
     --max-model-len 4096 \
-    --gpu-memory-utilization 0.95
+    --gpu-memory-utilization 0.95 \
     --default-chat-template-kwargs '{"enable_thinking": false}'
